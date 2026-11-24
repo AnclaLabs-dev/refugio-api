@@ -1,10 +1,13 @@
 import express, { type ErrorRequestHandler } from "express";
 import cors from "cors";
+import swaggerUi from "swagger-ui-express";
 import { env } from "./config/env";
 import { pool } from "./db/pool";
 import { authRouter } from "./routes/auth.routes";
 import { meRouter } from "./routes/me.routes";
 import { walletRouter } from "./routes/wallet.routes";
+import { usersRouter } from "./routes/users.routes";
+import { openApiSpec } from "./docs/openapi";
 
 const app = express();
 
@@ -19,6 +22,26 @@ app.get("/health", (_req, res) => {
 app.use("/auth", authRouter);
 app.use("/me", meRouter);
 app.use("/wallet", walletRouter);
+app.use("/users", usersRouter);
+
+// Documentación de la API (Swagger)
+app.get("/api-docs.json", (_req, res) => {
+  res.json(openApiSpec);
+});
+app.use(
+  "/api-docs",
+  swaggerUi.serve,
+  swaggerUi.setup(openApiSpec, {
+    customSiteTitle: "Refugio API · Documentación",
+    swaggerOptions: {
+      persistAuthorization: true,
+      displayRequestDuration: true,
+      tryItOutEnabled: true,
+      docExpansion: "list",
+      filter: true,
+    },
+  })
+);
 
 const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   console.error(err);

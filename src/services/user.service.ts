@@ -75,3 +75,33 @@ export async function updateUserName(firebaseUid: string, name: string): Promise
   );
   return result.rows[0] ?? null;
 }
+
+export interface UserSummary {
+  id: string;
+  email: string;
+  name: string | null;
+  created_at: Date;
+}
+
+export interface ListUsersParams {
+  page: number;
+  limit: number;
+  search?: string;
+}
+
+export async function listUsers({ page, limit, search }: ListUsersParams): Promise<{ users: UserSummary[]; total: number }> {
+  const term = search ? `%${search}%` : null;
+  const where = "WHERE ($1::text IS NULL OR email ILIKE $1 OR name ILIKE $1)";
+
+  const [rows, count] = await Promise.all([
+    pool.query<UserSummary>(
+      `SELECT id, email, name, created_at FROM users ${where}
+       ORDER BY created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [term, limit, (page - 1) * limit]
+    ),
+    pool.query<{ total: number }>(`SELECT COUNT(*)::int AS total FROM users ${where}`, [term]),
+  ]);
+
+  return { users: rows.rows, total: count.rows[0].total };
+}
