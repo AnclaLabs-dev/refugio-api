@@ -1,10 +1,18 @@
 import { Router } from "express";
+import { z } from "zod";
 import { requireAuth } from "../middlewares/auth";
+import { validateBody } from "../middlewares/validate";
 import { syncUser } from "../services/user.service";
 
 export const authRouter = Router();
 
-authRouter.post("/sync", requireAuth, async (req, res) => {
+const syncSchema = z
+  .object({
+    name: z.string().trim().max(100, "El nombre no puede superar los 100 caracteres").optional(),
+  })
+  .optional();
+
+authRouter.post("/sync", requireAuth, validateBody(syncSchema), async (req, res) => {
   const { uid, email } = req.user!;
 
   if (!email) {
@@ -12,6 +20,9 @@ authRouter.post("/sync", requireAuth, async (req, res) => {
     return;
   }
 
-  const { user, created } = await syncUser(uid, email);
+  const body = req.body as z.infer<typeof syncSchema>;
+  const name = body?.name || null;
+
+  const { user, created } = await syncUser(uid, email, name);
   res.status(created ? 201 : 200).json({ user, created });
 });

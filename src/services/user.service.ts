@@ -16,9 +16,13 @@ export async function findUserByFirebaseUid(firebaseUid: string): Promise<User |
   return result.rows[0] ?? null;
 }
 
-export async function syncUser(firebaseUid: string, email: string): Promise<{ user: User; created: boolean }> {
+export async function syncUser(firebaseUid: string, email: string, name: string | null): Promise<{ user: User; created: boolean }> {
   const existing = await findUserByFirebaseUid(firebaseUid);
   if (existing) {
+    if (existing.name === null && name) {
+      const updated = await updateUserName(firebaseUid, name);
+      return { user: updated ?? existing, created: false };
+    }
     return { user: existing, created: false };
   }
 
@@ -27,11 +31,11 @@ export async function syncUser(firebaseUid: string, email: string): Promise<{ us
     await client.query("BEGIN");
 
     const inserted = await client.query<User>(
-      `INSERT INTO users (firebase_uid, email)
-       VALUES ($1, $2)
+      `INSERT INTO users (firebase_uid, email, name)
+       VALUES ($1, $2, $3)
        ON CONFLICT (firebase_uid) DO NOTHING
        RETURNING id, firebase_uid, email, name, created_at`,
-      [firebaseUid, email]
+      [firebaseUid, email, name]
     );
 
     const user = inserted.rows[0];
