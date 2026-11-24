@@ -4,6 +4,7 @@ import { env } from "./config/env";
 import { pool } from "./db/pool";
 import { authRouter } from "./routes/auth.routes";
 import { meRouter } from "./routes/me.routes";
+import { walletRouter } from "./routes/wallet.routes";
 
 const app = express();
 
@@ -14,9 +15,10 @@ app.use(express.json());
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
-
+     
 app.use("/auth", authRouter);
 app.use("/me", meRouter);
+app.use("/wallet", walletRouter);
 
 const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   console.error(err);
