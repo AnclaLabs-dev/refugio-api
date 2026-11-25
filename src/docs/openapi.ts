@@ -141,6 +141,39 @@ export const openApiSpec = {
           balances: { type: "array", items: { $ref: "#/components/schemas/Balance" } },
         },
       },
+      DepositRequest: {
+        type: "object",
+        required: ["currency", "amount", "idempotency_key"],
+        properties: {
+          currency: { type: "string", enum: ["ARS", "USD"] },
+          amount: {
+            type: "string",
+            description: "Monto a cargar con hasta 2 decimales. Mínimo 1; máximo 1.000.000 ARS o 1.000 USD por carga",
+            example: "15000.50",
+          },
+          idempotency_key: {
+            type: "string",
+            minLength: 8,
+            maxLength: 64,
+            description: "Clave única por intento de carga (se recomienda un UUID). Si se repite, no se vuelve a cargar",
+            example: "3f6c1b9e-2d4a-4c8b-9e7f-1a2b3c4d5e6f",
+          },
+        },
+      },
+      Deposit: {
+        type: "object",
+        required: ["id", "type", "currency", "amount", "balance_after", "idempotency_key", "email_status", "created_at"],
+        properties: {
+          id: { type: "string", format: "uuid" },
+          type: { type: "string", enum: ["DEPOSIT"] },
+          currency: { type: "string", enum: ["ARS", "USD"] },
+          amount: { type: "string", example: "15000.50" },
+          balance_after: { type: "string", description: "Saldo de la moneda después de la carga", example: "15000.50" },
+          idempotency_key: { type: "string" },
+          email_status: { type: "string", enum: ["PENDING", "SENT", "FAILED"] },
+          created_at: { type: "string", format: "date-time" },
+        },
+      },
       Error: {
         type: "object",
         required: ["error"],
@@ -537,6 +570,66 @@ export const openApiSpec = {
                   noSincronizado: notSyncedExample,
                   monedaNoSoportada: { summary: "Moneda no soportada", value: { error: "Moneda no soportada: EUR" } },
                 },
+              },
+            },
+          },
+          "500": { $ref: "#/components/responses/InternalError" },
+        },
+      },
+    },
+    "/wallet/deposit": {
+      post: {
+        tags: ["Billetera"],
+        operationId: "createDeposit",
+        summary: "Cargar dinero ficticio en ARS o USD",
+        description:
+          "Suma el monto al saldo y registra la operación en el historial. Límites por carga: 1.000.000 ARS o 1.000 USD. Tope diario (día calendario de Argentina): 100.000.000 ARS o 100.000 USD. Si se repite la misma idempotency_key, devuelve la carga original sin volver a sumar.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/DepositRequest" } } },
+        },
+        responses: {
+          "201": {
+            description: "Carga realizada",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["deposit", "replayed"],
+                  properties: { deposit: { $ref: "#/components/schemas/Deposit" }, replayed: { type: "boolean", example: false } },
+                },
+              },
+            },
+          },
+          "200": {
+            description: "Carga repetida con la misma idempotency_key: no se volvió a sumar",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["deposit", "replayed"],
+                  properties: { deposit: { $ref: "#/components/schemas/Deposit" }, replayed: { type: "boolean", example: true } },
+                },
+              },
+            },
+          },
+          "400": {
+            description: "Datos inválidos (moneda, formato del monto, mínimo/máximo por carga o idempotency_key)",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/ValidationError" } } },
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotSynced" },
+          "409": {
+            description: "La idempotency_key ya fue usada en otra operación",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
+          },
+          "422": {
+            description: "Se superó el tope diario de carga",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Error" },
+                example: { error: "Superaste el tope diario de carga de 100.000.000 ARS" },
               },
             },
           },
