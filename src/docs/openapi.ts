@@ -5,6 +5,8 @@
  * Al agregar o modificar un endpoint, actualizar también este archivo.
  */
 
+import { ratesPaths, ratesSchemas, ratesTag } from "./rates.docs";
+
 const PROD_URL = "https://refugio-api-production-1c49e3aa.up.railway.app";
 
 // ---------- Ejemplos reutilizables ----------
@@ -67,6 +69,7 @@ export const openApiSpec = {
     { name: "Perfil", description: "Datos del usuario autenticado" },
     { name: "Usuarios", description: "Listado de usuarios registrados" },
     { name: "Billetera", description: "Billetera multimoneda y saldos del usuario autenticado" },
+    ratesTag,
   ],
   components: {
     securitySchemes: {
@@ -78,6 +81,7 @@ export const openApiSpec = {
       },
     },
     schemas: {
+      ...ratesSchemas,
       User: {
         type: "object",
         description: "Usuario completo (solo se devuelve al propio usuario)",
@@ -247,6 +251,7 @@ export const openApiSpec = {
     },
   },
   paths: {
+    ...ratesPaths,
     "/health": {
       get: {
         tags: ["Health"],

@@ -7,6 +7,7 @@ import { authRouter } from "./routes/auth.routes";
 import { meRouter } from "./routes/me.routes";
 import { walletRouter } from "./routes/wallet.routes";
 import { usersRouter } from "./routes/users.routes";
+import { ratesRouter } from "./routes/rates.routes";
 import { openApiSpec } from "./docs/openapi";
 
 const app = express();
@@ -23,6 +24,7 @@ app.use("/auth", authRouter);
 app.use("/me", meRouter);
 app.use("/wallet", walletRouter);
 app.use("/users", usersRouter);
+app.use("/rates", ratesRouter);
 
 // Documentación de la API (Swagger)
 app.get("/api-docs.json", (_req, res) => {
