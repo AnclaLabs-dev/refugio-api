@@ -6,6 +6,8 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1, "Falta DATABASE_URL"),
   FIREBASE_SERVICE_ACCOUNT: z.string().min(1, "Falta FIREBASE_SERVICE_ACCOUNT"),
   FRONTEND_URL: z.string().optional(),
+  COINGECKO_API_KEY: z.string().optional(),
+  RATES_TTL_MINUTES: z.coerce.number().int().min(1).default(10),
 });
 
 const parsed = envSchema.safeParse(process.env);
