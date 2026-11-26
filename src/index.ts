@@ -9,6 +9,7 @@ import { walletRouter } from "./routes/wallet.routes";
 import { usersRouter } from "./routes/users.routes";
 import { ratesRouter } from "./routes/rates.routes";
 import { exchangeRouter } from "./routes/exchange.routes";
+import { summaryRouter } from "./routes/summary.routes";
 import { openApiSpec } from "./docs/openapi";
 
 const app = express();
@@ -23,6 +24,7 @@ app.get("/health", (_req, res) => {
      
 app.use("/auth", authRouter);
 app.use("/me", meRouter);
+app.use("/wallet/summary", summaryRouter);
 app.use("/wallet", walletRouter);
 app.use("/users", usersRouter);
 app.use("/rates", ratesRouter);
