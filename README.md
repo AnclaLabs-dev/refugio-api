@@ -37,6 +37,7 @@ La spec está en `src/docs/openapi.ts`. **Si agregás o cambiás un endpoint, ac
 | GET    | `/rates/history`              | No   | Historial diario para el comparador      |
 | POST   | `/exchange/quote`             | Sí   | Cotizar una conversión (no mueve dinero) |
 | POST   | `/exchange`                   | Sí   | Convertir entre ARS, USD, USDT y BTC     |
+| GET    | `/wallet/summary`             | Sí   | Patrimonio total, composición y evolución diaria |
 
 ## Cotizaciones (caché)
 
