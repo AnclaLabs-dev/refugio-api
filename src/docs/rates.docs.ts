@@ -3,40 +3,14 @@
  * Se integra en openapi.ts. Mantener en sintonía con src/routes/rates.routes.ts.
  */
 
+const fetched = "2026-11-26T17:30:12.000Z";
+
 const exampleRates = [
-  {
-    pair: "USD/ARS",
-    base: "USD",
-    quote: "ARS",
-    rate_type: "oficial",
-    buy: "1405",
-    sell: "1455",
-    source: "dolarapi.com",
-    fetched_at: "2026-11-24T17:30:12.000Z",
-    stale: false,
-  },
-  {
-    pair: "BTC/USD",
-    base: "BTC",
-    quote: "USD",
-    rate_type: "spot",
-    buy: "90125.42",
-    sell: "90125.42",
-    source: "coingecko.com",
-    fetched_at: "2026-11-24T17:30:12.000Z",
-    stale: false,
-  },
-  {
-    pair: "USDT/USD",
-    base: "USDT",
-    quote: "USD",
-    rate_type: "spot",
-    buy: "1.0002",
-    sell: "1.0002",
-    source: "coingecko.com",
-    fetched_at: "2026-11-24T17:30:12.000Z",
-    stale: false,
-  },
+  { pair: "USD/ARS", base: "USD", quote: "ARS", rate_type: "oficial", mid: "1430", buy: "1405", sell: "1455", spread: "0.035", source: "dolarapi.com", fetched_at: fetched, stale: false, derived: false },
+  { pair: "BTC/USD", base: "BTC", quote: "USD", rate_type: "spot", mid: "90125.42", buy: "89674.7929", sell: "90576.0471", spread: "0.01", source: "coingecko.com", fetched_at: fetched, stale: false, derived: false },
+  { pair: "USDT/USD", base: "USDT", quote: "USD", rate_type: "spot", mid: "1.0002", buy: "0.995199", sell: "1.005201", spread: "0.01", source: "coingecko.com", fetched_at: fetched, stale: false, derived: false },
+  { pair: "BTC/ARS", base: "BTC", quote: "ARS", rate_type: "spot", mid: "128879350.6", buy: "125993084.0245", sell: "131788148.5305", spread: "0.045", source: "coingecko.com + dolarapi.com", fetched_at: fetched, stale: false, derived: true },
+  { pair: "USDT/ARS", base: "USDT", quote: "ARS", rate_type: "spot", mid: "1430.286", buy: "1398.254595", sell: "1462.567455", spread: "0.045", source: "coingecko.com + dolarapi.com", fetched_at: fetched, stale: false, derived: true },
 ];
 
 export const ratesTag = {
@@ -47,7 +21,7 @@ export const ratesTag = {
 export const ratesSchemas = {
   Rate: {
     type: "object",
-    required: ["pair", "base", "quote", "rate_type", "buy", "sell", "source", "fetched_at", "stale"],
+    required: ["pair", "base", "quote", "rate_type", "mid", "buy", "sell", "spread", "source", "fetched_at", "stale", "derived"],
     properties: {
       pair: { type: "string", example: "USD/ARS" },
       base: { type: "string", description: "Moneda que se cotiza", example: "USD" },
@@ -57,13 +31,27 @@ export const ratesSchemas = {
         enum: ["oficial", "spot"],
         description: "`oficial`: dólar oficial (bancos autorizados por el BCRA). `spot`: precio de mercado cripto",
       },
-      buy: { type: "string", description: "Precio de compra, como texto decimal para no perder precisión", example: "1405" },
-      sell: { type: "string", description: "Precio de venta. En cripto (`spot`) es igual a `buy`", example: "1455" },
-      source: { type: "string", enum: ["dolarapi.com", "coingecko.com"] },
+      mid: { type: "string", description: "Precio de mercado (punto medio entre compra y venta)", example: "1430" },
+      buy: {
+        type: "string",
+        description: "Precio al que Refugio te **compra** la moneda base (lo que recibís si vendés). Texto decimal para no perder precisión",
+        example: "1405",
+      },
+      sell: { type: "string", description: "Precio al que Refugio te **vende** la moneda base (lo que pagás si comprás)", example: "1455" },
+      spread: {
+        type: "string",
+        description: "Diferencia entre venta y compra sobre el precio medio (0.01 = 1%). Dólar oficial: spread real de los bancos. Cripto: spread de Refugio (`crypto_spread`)",
+        example: "0.035",
+      },
+      source: { type: "string", example: "dolarapi.com" },
       fetched_at: { type: "string", format: "date-time", description: "Momento en que el backend obtuvo la cotización" },
       stale: {
         type: "boolean",
         description: "`true` si la cotización es más vieja que `ttl_minutes` porque la fuente externa no respondió",
+      },
+      derived: {
+        type: "boolean",
+        description: "`true` en los pares calculados: BTC/ARS y USDT/ARS = cripto/USD × USD/ARS oficial",
       },
     },
   },
@@ -86,7 +74,12 @@ export const ratesPaths = {
       operationId: "getRates",
       summary: "Obtener las cotizaciones actuales",
       description: [
-        "Devuelve **USD/ARS** (dólar oficial), **BTC/USD** y **USDT/USD**. Es **público**: no requiere token.",
+        "Devuelve **USD/ARS** (dólar oficial), **BTC/USD**, **USDT/USD** y los pares calculados **BTC/ARS** y **USDT/ARS**. Es **público**: no requiere token.",
+        "",
+        "**Spread (transparencia de tasas):**",
+        "- Dólar oficial: compra y venta reales de los bancos.",
+        "- Cripto: CoinGecko da un solo precio de mercado (`mid`); Refugio aplica su spread (`crypto_spread`, 1%): `buy = mid × 0,995` y `sell = mid × 1,005`.",
+        "- Pares en pesos: se combinan los dos tramos (cripto → USD → ARS) con sus spreads.",
         "",
         "**Cómo funciona la caché:**",
         "- Las cotizaciones se guardan en la base de datos (`exchange_rates`).",
@@ -102,23 +95,24 @@ export const ratesPaths = {
             "application/json": {
               schema: {
                 type: "object",
-                required: ["rates", "ttl_minutes"],
+                required: ["rates", "ttl_minutes", "crypto_spread"],
                 properties: {
                   rates: { type: "array", items: { $ref: "#/components/schemas/Rate" } },
                   ttl_minutes: { type: "integer", description: "Vigencia de la caché en minutos", example: 10 },
+                  crypto_spread: { type: "string", description: "Spread total que aplica Refugio a cripto (0.01 = 1%)", example: "0.01" },
                 },
               },
               examples: {
-                actualizadas: { summary: "Cotizaciones al día", value: { rates: exampleRates, ttl_minutes: 10 } },
+                actualizadas: { summary: "Cotizaciones al día", value: { rates: exampleRates, ttl_minutes: 10, crypto_spread: "0.01" } },
                 fuenteCaida: {
                   summary: "CoinGecko no respondió (cripto desactualizada)",
                   value: {
                     rates: [
                       exampleRates[0],
-                      { ...exampleRates[1], fetched_at: "2026-11-24T16:05:40.000Z", stale: true },
-                      { ...exampleRates[2], fetched_at: "2026-11-24T16:05:40.000Z", stale: true },
+                      ...exampleRates.slice(1).map((r) => ({ ...r, fetched_at: "2026-11-26T16:05:40.000Z", stale: true })),
                     ],
                     ttl_minutes: 10,
+                    crypto_spread: "0.01",
                   },
                 },
               },
@@ -144,7 +138,7 @@ export const ratesPaths = {
       operationId: "getRateHistory",
       summary: "Historial diario de un par (comparador histórico)",
       description: [
-        "Devuelve un valor por día: la última cotización registrada ese día (hora de Argentina). Es **público**.",
+        "Devuelve un valor por día: la última cotización de **mercado** registrada ese día (hora de Argentina, sin el spread de Refugio). Es **público**.",
         "",
         "- Pares disponibles: `USD/ARS`, `BTC/USD`, `USDT/USD`.",
         "- Si no se envían fechas, devuelve los **últimos 30 días**.",

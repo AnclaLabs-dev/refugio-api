@@ -8,6 +8,7 @@ const envSchema = z.object({
   FRONTEND_URL: z.string().optional(),
   COINGECKO_API_KEY: z.string().optional(),
   RATES_TTL_MINUTES: z.coerce.number().int().min(1).default(10),
+  CRYPTO_SPREAD: z.coerce.number().min(0).max(0.1).default(0.01),
 });
 
 const parsed = envSchema.safeParse(process.env);

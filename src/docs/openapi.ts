@@ -6,6 +6,7 @@
  */
 
 import { ratesPaths, ratesSchemas, ratesTag } from "./rates.docs";
+import { exchangePaths, exchangeSchemas, exchangeTag } from "./exchange.docs";
 
 const PROD_URL = "https://refugio-api-production-1c49e3aa.up.railway.app";
 
@@ -70,6 +71,7 @@ export const openApiSpec = {
     { name: "Usuarios", description: "Listado de usuarios registrados" },
     { name: "Billetera", description: "Billetera multimoneda y saldos del usuario autenticado" },
     ratesTag,
+    exchangeTag,
   ],
   components: {
     securitySchemes: {
@@ -82,6 +84,7 @@ export const openApiSpec = {
     },
     schemas: {
       ...ratesSchemas,
+      ...exchangeSchemas,
       User: {
         type: "object",
         description: "Usuario completo (solo se devuelve al propio usuario)",
@@ -252,6 +255,7 @@ export const openApiSpec = {
   },
   paths: {
     ...ratesPaths,
+    ...exchangePaths,
     "/health": {
       get: {
         tags: ["Health"],
