@@ -1,18 +1,20 @@
 import { pool } from "../db/pool";
+import { AliasCooldownError, AliasTakenError, isAliasConflict, pickFreeAlias } from "./alias.service";
+
+const USER_COLUMNS = "id, firebase_uid, email, name, alias, alias_updated_at, created_at";
 
 export interface User {
   id: string;
   firebase_uid: string;
   email: string;
   name: string | null;
+  alias: string;
+  alias_updated_at: Date | null;
   created_at: Date;
 }
 
 export async function findUserByFirebaseUid(firebaseUid: string): Promise<User | null> {
-  const result = await pool.query<User>(
-    "SELECT id, firebase_uid, email, name, created_at FROM users WHERE firebase_uid = $1",
-    [firebaseUid]
-  );
+  const result = await pool.query<User>(`SELECT ${USER_COLUMNS} FROM users WHERE firebase_uid = $1`, [firebaseUid]);
   return result.rows[0] ?? null;
 }
 
@@ -26,16 +28,31 @@ export async function syncUser(firebaseUid: string, email: string, name: string 
     return { user: existing, created: false };
   }
 
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await createUserWithWallet(firebaseUid, email, name);
+    } catch (err) {
+      if (attempt < 3 && isAliasConflict(err)) {
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
+async function createUserWithWallet(firebaseUid: string, email: string, name: string | null): Promise<{ user: User; created: boolean }> {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
+    const alias = await pickFreeAlias(client, name, email);
+
     const inserted = await client.query<User>(
-      `INSERT INTO users (firebase_uid, email, name)
-       VALUES ($1, $2, $3)
+      `INSERT INTO users (firebase_uid, email, name, alias)
+       VALUES ($1, $2, $3, $4)
        ON CONFLICT (firebase_uid) DO NOTHING
-       RETURNING id, firebase_uid, email, name, created_at`,
-      [firebaseUid, email, name]
+       RETURNING ${USER_COLUMNS}`,
+      [firebaseUid, email, name, alias]
     );
 
     const user = inserted.rows[0];
@@ -70,10 +87,38 @@ export async function syncUser(firebaseUid: string, email: string, name: string 
 
 export async function updateUserName(firebaseUid: string, name: string): Promise<User | null> {
   const result = await pool.query<User>(
-    "UPDATE users SET name = $1 WHERE firebase_uid = $2 RETURNING id, firebase_uid, email, name, created_at",
+    `UPDATE users SET name = $1 WHERE firebase_uid = $2 RETURNING ${USER_COLUMNS}`,
     [name, firebaseUid]
   );
   return result.rows[0] ?? null;
+}
+
+export async function updateProfile(firebaseUid: string, changes: { name?: string; alias?: string }): Promise<User | null> {
+  try {
+    const result = await pool.query<User>(
+      `UPDATE users
+       SET name = COALESCE($2::text, name),
+           alias = COALESCE($3::text, alias),
+           alias_updated_at = CASE WHEN $3::text IS NOT NULL AND $3::text <> alias THEN now() ELSE alias_updated_at END
+       WHERE firebase_uid = $1
+         AND ($3::text IS NULL OR $3::text = alias OR alias_updated_at IS NULL OR alias_updated_at <= now() - interval '24 hours')
+       RETURNING ${USER_COLUMNS}`,
+      [firebaseUid, changes.name ?? null, changes.alias ?? null]
+    );
+
+    if (result.rows[0]) {
+      return result.rows[0];
+    }
+    if (await findUserByFirebaseUid(firebaseUid)) {
+      throw new AliasCooldownError("Solo podés modificar tu alias una vez cada 24 horas");
+    }
+    return null;
+  } catch (err) {
+    if (isAliasConflict(err)) {
+      throw new AliasTakenError("Ese alias ya está en uso");
+    }
+    throw err;
+  }
 }
 
 export interface UserSummary {
