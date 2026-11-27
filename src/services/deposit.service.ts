@@ -7,7 +7,7 @@ export const DEPOSIT_LIMITS: Record<DepositCurrency, { perDeposit: number; daily
   USD: { perDeposit: 1_000, daily: 100_000 },
 };
 
-const ARGENTINA_TIMEZONE = "America/Argentina/Buenos_Aires";
+export const ARGENTINA_TIMEZONE ="America/Argentina/Buenos_Aires";
 
 const DEPOSIT_COLUMNS = `id, type, to_currency AS currency, TRUNC(to_amount, 2)::text AS amount,
   TRUNC(to_balance_after, 2)::text AS balance_after, idempotency_key, email_status, created_at`;
