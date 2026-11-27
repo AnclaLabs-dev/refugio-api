@@ -10,12 +10,14 @@ import { getMarketRates, MarketRate, RatesUnavailableError } from "./rates.servi
  *
  * La evolución se reconstruye con:
  * - Saldos: el saldo posterior a cada movimiento guardado en `transactions`
- *   (`from_balance_after` / `to_balance_after`).
+ *   (`from_balance_after` / `to_balance_after`). En las transferencias cada fila
+ *   tiene un solo lado completo (enviado o recibido) y el otro en NULL, que se ignora.
  * - Precios: la cotización de cierre de cada día guardada en `rate_history`.
  *   Si un día no tiene cotización, se usa la del último día anterior que sí tenga.
  *
  * La variación se mide desde el primer día del período con patrimonio mayor a 0 hasta hoy.
- * Incluye cargas y conversiones: es el cambio del patrimonio, no un rendimiento puro.
+ * Incluye cargas, conversiones y transferencias (enviadas y recibidas):
+ * es el cambio del patrimonio, no un rendimiento puro.
  */
 
 const ARGENTINA_TIMEZONE = "America/Argentina/Buenos_Aires";

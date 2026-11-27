@@ -78,7 +78,7 @@ export const summarySchemas = {
         type: "object",
         nullable: true,
         description:
-          "Cambio del patrimonio desde el primer día del período con saldo mayor a 0 hasta hoy. **Incluye cargas y conversiones**: no es un rendimiento puro. `null` si no hay al menos dos días con datos",
+          "Cambio del patrimonio desde el primer día del período con saldo mayor a 0 hasta hoy. **Incluye cargas, conversiones y transferencias enviadas y recibidas**: no es un rendimiento puro. `null` si no hay al menos dos días con datos",
         properties: {
           from_date: { type: "string", format: "date" },
           to_date: { type: "string", format: "date" },
@@ -123,7 +123,7 @@ export const summaryPaths = {
         "- **Evolución diaria** de los últimos `days` días y su **variación** (gráfico de línea).",
         "",
         "**Cómo se valúa:** a precio de mercado (punto medio entre compra y venta, sin spread).",
-        "La evolución combina el saldo de cada día (según los movimientos registrados) con la cotización de cierre de ese día.",
+        "La evolución combina el saldo de cada día (según todos los movimientos: cargas, conversiones y transferencias) con la cotización de cierre de ese día.",
       ].join("\n"),
       security: [{ bearerAuth: [] }],
       parameters: [
