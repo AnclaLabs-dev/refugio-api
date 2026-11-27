@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { pool } from "../db/pool";
 import { env } from "../config/env";
+import { Dec, formatDecimal } from "../utils/decimal";
 
 /**
  * Cotizaciones con caché en la base de datos.
@@ -11,6 +12,16 @@ import { env } from "../config/env";
  * - Si vencieron, se consultan DolarApi (fiat) y CoinGecko (cripto), se actualiza
  *   `exchange_rates` y se guarda el valor del día en `rate_history` (comparador histórico).
  * - Si una API externa falla, se devuelve la última cotización guardada marcada como `stale`.
+ *
+ * Spread:
+ * - Dólar oficial: se usa la compra/venta real de los bancos (ya trae spread).
+ * - Cripto: CoinGecko da un solo precio de mercado (`mid`). Refugio aplica un spread propio
+ *   (CRYPTO_SPREAD, 1% por defecto): compra = mid × (1 − spread/2), venta = mid × (1 + spread/2).
+ * - En la base se guarda siempre el precio de mercado; el spread se aplica al leer.
+ *
+ * Convención (igual que en bancos y casas de cambio):
+ * - `buy`  = precio al que Refugio te COMPRA la moneda base (lo que recibís si vendés).
+ * - `sell` = precio al que Refugio te VENDE la moneda base (lo que pagás si comprás).
  */
 
 export type RateType = "oficial" | "spot";
@@ -35,7 +46,8 @@ const EXTERNAL_TIMEOUT_MS = 5000;
 /** Tiempo mínimo entre dos consultas externas (evita consultas duplicadas y martillar una API caída). */
 const MIN_REFRESH_INTERVAL_MS = 60_000;
 
-export interface Rate {
+/** Cotización tal como está guardada en la base (precio de mercado, sin spread propio). */
+interface StoredRate {
   pair: string;
   base: string;
   quote: string;
@@ -45,6 +57,38 @@ export interface Rate {
   source: string;
   fetched_at: Date;
   stale: boolean;
+}
+
+/** Cotización lista para operar: con spread aplicado y valores decimales exactos. */
+export interface MarketRate {
+  pair: string;
+  base: string;
+  quote: string;
+  rate_type: RateType;
+  mid: Dec;
+  buy: Dec;
+  sell: Dec;
+  spread: Dec;
+  source: string;
+  fetched_at: Date;
+  stale: boolean;
+  derived: boolean;
+}
+
+/** Cotización tal como la devuelve GET /rates. */
+export interface Rate {
+  pair: string;
+  base: string;
+  quote: string;
+  rate_type: RateType;
+  mid: string;
+  buy: string;
+  sell: string;
+  spread: string;
+  source: string;
+  fetched_at: Date;
+  stale: boolean;
+  derived: boolean;
 }
 
 export interface RateHistoryPoint {
@@ -164,8 +208,8 @@ async function refreshRates(): Promise<void> {
   await saveRates(ok);
 }
 
-async function readStoredRates(): Promise<Rate[]> {
-  const result = await pool.query<Rate>(
+async function readStoredRates(): Promise<StoredRate[]> {
+  const result = await pool.query<StoredRate>(
     `SELECT base_currency || '/' || quote_currency AS pair,
             base_currency AS base, quote_currency AS quote, rate_type,
             trim_scale(buy)::text AS buy, trim_scale(sell)::text AS sell,
@@ -181,7 +225,7 @@ async function readStoredRates(): Promise<Rate[]> {
   );
 }
 
-function needsRefresh(rates: Rate[]): boolean {
+function needsRefresh(rates: StoredRate[]): boolean {
   return rates.length < SUPPORTED_PAIRS.length || rates.some((r) => r.stale);
 }
 
@@ -210,17 +254,94 @@ async function ensureFreshRates(): Promise<void> {
   }
 }
 
+// ---------- Spread y pares derivados ----------
+
+function applySpread(r: StoredRate): MarketRate {
+  const buy = new Dec(r.buy);
+  const sell = new Dec(r.sell);
+  const base = { pair: r.pair, base: r.base, quote: r.quote, rate_type: r.rate_type, source: r.source, fetched_at: r.fetched_at, stale: r.stale, derived: false };
+
+  if (r.rate_type === "spot") {
+    // Cripto: CoinGecko da un único precio de mercado → aplicamos el spread de Refugio
+    const mid = buy;
+    const spread = new Dec(env.CRYPTO_SPREAD);
+    const half = spread.div(2);
+    return { ...base, mid, buy: mid.times(Dec.sub(1, half)), sell: mid.times(Dec.add(1, half)), spread };
+  }
+
+  // Dólar oficial: compra y venta reales de los bancos
+  const mid = buy.plus(sell).div(2);
+  return { ...base, mid, buy, sell, spread: sell.minus(buy).div(mid) };
+}
+
+/** Cripto en pesos: BTC/ARS = BTC/USD × USD/ARS oficial (con los spreads de cada tramo). */
+function derivePair(crypto: MarketRate, usdArs: MarketRate): MarketRate {
+  const mid = crypto.mid.times(usdArs.mid);
+  const buy = crypto.buy.times(usdArs.buy);
+  const sell = crypto.sell.times(usdArs.sell);
+  return {
+    pair: `${crypto.base}/ARS`,
+    base: crypto.base,
+    quote: "ARS",
+    rate_type: "spot",
+    mid,
+    buy,
+    sell,
+    spread: sell.minus(buy).div(mid),
+    source: `${crypto.source} + ${usdArs.source}`,
+    fetched_at: crypto.fetched_at < usdArs.fetched_at ? crypto.fetched_at : usdArs.fetched_at,
+    stale: crypto.stale || usdArs.stale,
+    derived: true,
+  };
+}
+
+function toPublicRate(r: MarketRate): Rate {
+  return {
+    pair: r.pair,
+    base: r.base,
+    quote: r.quote,
+    rate_type: r.rate_type,
+    mid: formatDecimal(r.mid, 8),
+    buy: formatDecimal(r.buy, 8),
+    sell: formatDecimal(r.sell, 8),
+    spread: formatDecimal(r.spread, 4),
+    source: r.source,
+    fetched_at: r.fetched_at,
+    stale: r.stale,
+    derived: r.derived,
+  };
+}
+
 // ---------- API pública del servicio ----------
 
-export async function getCurrentRates(): Promise<{ rates: Rate[]; ttl_minutes: number }> {
+/**
+ * Cotizaciones de mercado (USD/ARS, BTC/USD, USDT/USD) con el spread aplicado.
+ * Las usa también el servicio de conversiones.
+ */
+export async function getMarketRates(): Promise<MarketRate[]> {
   await ensureFreshRates();
-  const rates = await readStoredRates();
+  const stored = await readStoredRates();
 
-  if (rates.length === 0) {
+  if (stored.length === 0) {
     throw new RatesUnavailableError("Cotizaciones no disponibles por el momento, intentá de nuevo en unos minutos");
   }
 
-  return { rates, ttl_minutes: env.RATES_TTL_MINUTES };
+  return stored.map(applySpread);
+}
+
+export async function getCurrentRates(): Promise<{ rates: Rate[]; ttl_minutes: number; crypto_spread: string }> {
+  const market = await getMarketRates();
+
+  const usdArs = market.find((r) => r.pair === "USD/ARS");
+  const derived = usdArs
+    ? market.filter((r) => r.rate_type === "spot" && r.quote === "USD").map((r) => derivePair(r, usdArs))
+    : [];
+
+  return {
+    rates: [...market, ...derived].map(toPublicRate),
+    ttl_minutes: env.RATES_TTL_MINUTES,
+    crypto_spread: formatDecimal(new Dec(env.CRYPTO_SPREAD), 4),
+  };
 }
 
 export function findPair(base: string, quote: string): RatePair | undefined {

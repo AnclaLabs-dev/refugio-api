@@ -8,6 +8,10 @@ import { meRouter } from "./routes/me.routes";
 import { walletRouter } from "./routes/wallet.routes";
 import { usersRouter } from "./routes/users.routes";
 import { ratesRouter } from "./routes/rates.routes";
+import { exchangeRouter } from "./routes/exchange.routes";
+import { summaryRouter } from "./routes/summary.routes";
+import { aliasRouter } from "./routes/alias.routes";
+import { transferRouter } from "./routes/transfer.routes";
 import { openApiSpec } from "./docs/openapi";
 
 const app = express();
@@ -22,9 +26,13 @@ app.get("/health", (_req, res) => {
      
 app.use("/auth", authRouter);
 app.use("/me", meRouter);
+app.use("/wallet/summary", summaryRouter);
 app.use("/wallet", walletRouter);
 app.use("/users", usersRouter);
 app.use("/rates", ratesRouter);
+app.use("/exchange", exchangeRouter);
+app.use("/aliases", aliasRouter);
+app.use("/transfers", transferRouter);
 
 // Documentación de la API (Swagger)
 app.get("/api-docs.json", (_req, res) => {

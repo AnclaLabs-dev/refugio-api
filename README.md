@@ -35,6 +35,9 @@ La spec está en `src/docs/openapi.ts`. **Si agregás o cambiás un endpoint, ac
 | POST   | `/wallet/deposit`             | Sí   | Carga de dinero en ARS o USD             |
 | GET    | `/rates`                      | No   | Cotizaciones actuales (USD/ARS, BTC/USD, USDT/USD) |
 | GET    | `/rates/history`              | No   | Historial diario para el comparador      |
+| POST   | `/exchange/quote`             | Sí   | Cotizar una conversión (no mueve dinero) |
+| POST   | `/exchange`                   | Sí   | Convertir entre ARS, USD, USDT y BTC     |
+| GET    | `/wallet/summary`             | Sí   | Patrimonio total, composición y evolución diaria |
 
 ## Cotizaciones (caché)
 
@@ -44,6 +47,15 @@ La spec está en `src/docs/openapi.ts`. **Si agregás o cambiás un endpoint, ac
 - Cada actualización guarda el valor del día en `rate_history` (cierre diario), que alimenta `GET /rates/history`.
 - Si una fuente falla, se devuelve la última cotización guardada con `stale: true`.
 - Variable opcional `COINGECKO_API_KEY` (clave Demo gratuita) para no depender del límite compartido por IP.
+- **Spread:** el dólar oficial usa la compra/venta real de los bancos. En cripto, CoinGecko da un solo precio de mercado y Refugio aplica su spread (`CRYPTO_SPREAD`, 1% por defecto): compra = mercado × 0,995, venta = mercado × 1,005.
+- **Pares en pesos:** BTC/ARS y USDT/ARS se calculan como cripto/USD × USD/ARS oficial.
+
+## Conversiones
+
+- `POST /exchange/quote` calcula cuánto recibirías, sin mover dinero.
+- `POST /exchange` convierte en una sola transacción: bloquea los saldos, verifica fondos, debita, acredita y registra en `transactions` la cotización, el spread y la fuente usados.
+- Todas las conversiones pasan por el dólar como moneda puente. Lo que entregás se valúa al precio de compra (`buy`) y lo que recibís se cobra al de venta (`sell`).
+- Protección contra doble clic con `idempotency_key` y contra precios viejos (si la cotización está desactualizada, responde 503).
 
 ## Desarrollo local
 

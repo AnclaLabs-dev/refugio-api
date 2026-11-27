@@ -6,6 +6,10 @@
  */
 
 import { ratesPaths, ratesSchemas, ratesTag } from "./rates.docs";
+import { exchangePaths, exchangeSchemas, exchangeTag } from "./exchange.docs";
+import { summaryPaths, summarySchemas } from "./summary.docs";
+import { aliasPaths, aliasRules, aliasSchemas, aliasTag } from "./alias.docs";
+import { transferPaths, transferSchemas, transferTag } from "./transfer.docs";
 
 const PROD_URL = "https://refugio-api-production-1c49e3aa.up.railway.app";
 
@@ -16,6 +20,8 @@ const exampleUser = {
   firebase_uid: "Xk9pL2mN4qR7sT1uV3wY5zA8bC0d",
   email: "dante@anclalabs.dev",
   name: "Dante Cáceres",
+  alias: "dante.caceres.refugio",
+  alias_updated_at: null,
   created_at: "2026-11-20T14:32:10.000Z",
 };
 
@@ -70,6 +76,9 @@ export const openApiSpec = {
     { name: "Usuarios", description: "Listado de usuarios registrados" },
     { name: "Billetera", description: "Billetera multimoneda y saldos del usuario autenticado" },
     ratesTag,
+    exchangeTag,
+    aliasTag,
+    transferTag,
   ],
   components: {
     securitySchemes: {
@@ -82,15 +91,31 @@ export const openApiSpec = {
     },
     schemas: {
       ...ratesSchemas,
+      ...exchangeSchemas,
+      ...summarySchemas,
+      ...aliasSchemas,
+      ...transferSchemas,
       User: {
         type: "object",
         description: "Usuario completo (solo se devuelve al propio usuario)",
-        required: ["id", "firebase_uid", "email", "name", "created_at"],
+        required: ["id", "firebase_uid", "email", "name", "alias", "alias_updated_at", "created_at"],
         properties: {
           id: { type: "string", format: "uuid", description: "ID interno en PostgreSQL" },
           firebase_uid: { type: "string", description: "UID del usuario en Firebase Authentication" },
           email: { type: "string", format: "email" },
           name: { type: "string", nullable: true, maxLength: 100 },
+          alias: {
+            type: "string",
+            minLength: 3,
+            maxLength: 30,
+            description: "Alias único para recibir transferencias. Se genera al registrarse y se puede cambiar con PATCH /me",
+          },
+          alias_updated_at: {
+            type: "string",
+            format: "date-time",
+            nullable: true,
+            description: "Última vez que el usuario modificó su alias. Es null si nunca lo modificó (el alias automático no cuenta)",
+          },
           created_at: { type: "string", format: "date-time" },
         },
         example: exampleUser,
@@ -252,6 +277,10 @@ export const openApiSpec = {
   },
   paths: {
     ...ratesPaths,
+    ...exchangePaths,
+    ...summaryPaths,
+    ...aliasPaths,
+    ...transferPaths,
     "/health": {
       get: {
         tags: ["Health"],
@@ -284,7 +313,7 @@ export const openApiSpec = {
         description: [
           "Se llama **después de que el usuario inicia sesión o se registra en Firebase**.",
           "",
-          "- Si el usuario **no existe**, lo crea junto con su billetera y un saldo en 0 por cada moneda soportada. Responde **201**.",
+          "- Si el usuario **no existe**, lo crea junto con su billetera, un saldo en 0 por cada moneda soportada **y un alias automático**. Responde **201**.",
           "- Si **ya existe**, lo devuelve sin cambios. Responde **200**. Si no tenía nombre y se envía `name`, se lo guarda.",
           "",
           "La operación es idempotente: se puede llamar en cada login sin duplicar datos.",
@@ -382,8 +411,16 @@ export const openApiSpec = {
       patch: {
         tags: ["Perfil"],
         operationId: "updateMe",
-        summary: "Actualizar el nombre del usuario autenticado",
-        description: "Por ahora solo se puede modificar `name`. Si se envía cualquier otro campo, devuelve 400.",
+        summary: "Actualizar el nombre y/o el alias del usuario autenticado",
+        description: [
+          "Se puede enviar `name`, `alias` o ambos (al menos uno). Cualquier otro campo devuelve 400.",
+          "",
+          "Si se envían ambos y el alias no se puede modificar, no se guarda ningún cambio.",
+          "",
+          aliasRules,
+          "",
+          "Enviar el mismo alias que ya se tiene no cuenta como modificación.",
+        ].join("\n"),
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -391,13 +428,18 @@ export const openApiSpec = {
             "application/json": {
               schema: {
                 type: "object",
-                required: ["name"],
                 additionalProperties: false,
-                properties: { name: { type: "string", minLength: 1, maxLength: 100 } },
+                minProperties: 1,
+                properties: {
+                  name: { type: "string", minLength: 1, maxLength: 100 },
+                  alias: { type: "string", minLength: 3, maxLength: 30 },
+                },
               },
               examples: {
-                valido: { summary: "Cambio de nombre válido", value: { name: "Dante C." } },
-                vacio: { summary: "Nombre vacío (devuelve 400)", value: { name: "" } },
+                nombre: { summary: "Cambiar solo el nombre", value: { name: "Dante C." } },
+                alias: { summary: "Cambiar solo el alias", value: { alias: "dante.ahorra" } },
+                ambos: { summary: "Cambiar nombre y alias", value: { name: "Dante C.", alias: "Dante.Ahorra" } },
+                vacio: { summary: "Sin campos (devuelve 400)", value: {} },
                 campoExtra: { summary: "Campo no permitido (devuelve 400)", value: { name: "Dante", email: "otro@mail.com" } },
               },
             },
@@ -423,13 +465,20 @@ export const openApiSpec = {
                     summary: "Nombre vacío",
                     value: { error: "Datos inválidos", details: [{ field: "name", message: "El nombre no puede estar vacío" }] },
                   },
-                  faltaNombre: {
-                    summary: "Falta el campo name",
-                    value: { error: "Datos inválidos", details: [{ field: "name", message: "El nombre es obligatorio" }] },
+                  sinCampos: {
+                    summary: "Sin name ni alias",
+                    value: { error: "Datos inválidos", details: [{ field: "", message: "Enviá al menos name o alias" }] },
+                  },
+                  aliasInvalido: {
+                    summary: "Alias con formato inválido",
+                    value: {
+                      error: "Datos inválidos",
+                      details: [{ field: "alias", message: "El alias solo admite letras, números y puntos, sin puntos al inicio, al final ni seguidos" }],
+                    },
                   },
                   campoExtra: {
                     summary: "Campo no permitido",
-                    value: { error: "Datos inválidos", details: [{ field: "", message: "Solo se puede modificar el campo name" }] },
+                    value: { error: "Datos inválidos", details: [{ field: "", message: "Solo se pueden modificar los campos name y alias" }] },
                   },
                 },
               },
@@ -437,6 +486,24 @@ export const openApiSpec = {
           },
           "401": { $ref: "#/components/responses/Unauthorized" },
           "404": { $ref: "#/components/responses/NotSynced" },
+          "409": {
+            description: "El alias ya lo usa otro usuario",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Error" },
+                example: { error: "Ese alias ya está en uso" },
+              },
+            },
+          },
+          "422": {
+            description: "El alias se modificó hace menos de 24 horas",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Error" },
+                example: { error: "Solo podés modificar tu alias una vez cada 24 horas" },
+              },
+            },
+          },
           "500": { $ref: "#/components/responses/InternalError" },
         },
       },
