@@ -199,14 +199,15 @@ export async function createExchange(
   try {
     await client.query("BEGIN");
 
-    // 2) Bloquear los dos saldos del usuario (en orden fijo para evitar deadlocks)
+    // 2) Bloquear los dos saldos del usuario. Mismo orden que las transferencias
+    //    (wallet_id, currency_code) para que nunca se bloqueen entre sí (deadlock)
     const locked = await client.query<{ wallet_id: string; currency_code: string; amount: string }>(
       `SELECT b.wallet_id, b.currency_code, b.amount::text AS amount
        FROM balances b
        JOIN wallets w ON w.id = b.wallet_id
        JOIN users u ON u.id = w.user_id
        WHERE u.firebase_uid = $1 AND b.currency_code IN ($2, $3)
-       ORDER BY b.currency_code
+       ORDER BY b.wallet_id, b.currency_code
        FOR UPDATE OF b`,
       [firebaseUid, from, to]
     );
