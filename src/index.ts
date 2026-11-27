@@ -10,6 +10,7 @@ import { usersRouter } from "./routes/users.routes";
 import { ratesRouter } from "./routes/rates.routes";
 import { exchangeRouter } from "./routes/exchange.routes";
 import { summaryRouter } from "./routes/summary.routes";
+import { chatRouter } from "./routes/chat.routes";
 import { aliasRouter } from "./routes/alias.routes";
 import { transferRouter } from "./routes/transfer.routes";
 import { openApiSpec } from "./docs/openapi";
@@ -31,6 +32,7 @@ app.use("/wallet", walletRouter);
 app.use("/users", usersRouter);
 app.use("/rates", ratesRouter);
 app.use("/exchange", exchangeRouter);
+app.use("/chat", chatRouter);
 app.use("/aliases", aliasRouter);
 app.use("/transfers", transferRouter);
 
