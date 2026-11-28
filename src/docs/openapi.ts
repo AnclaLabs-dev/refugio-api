@@ -11,6 +11,7 @@ import { summaryPaths, summarySchemas } from "./summary.docs";
 import { chatPaths, chatSchemas, chatTag } from "./chat.docs";
 import { aliasPaths, aliasRules, aliasSchemas, aliasTag } from "./alias.docs";
 import { transferPaths, transferSchemas, transferTag } from "./transfer.docs";
+import { historyPaths, historySchemas } from "./history.docs";
 
 const PROD_URL = "https://refugio-api-production-1c49e3aa.up.railway.app";
 
@@ -98,6 +99,7 @@ export const openApiSpec = {
       ...chatSchemas,
       ...aliasSchemas,
       ...transferSchemas,
+      ...historySchemas,
       User: {
         type: "object",
         description: "Usuario completo (solo se devuelve al propio usuario)",
@@ -285,6 +287,7 @@ export const openApiSpec = {
     ...chatPaths,
     ...aliasPaths,
     ...transferPaths,
+    ...historyPaths,
     "/health": {
       get: {
         tags: ["Health"],
