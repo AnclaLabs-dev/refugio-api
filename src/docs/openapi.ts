@@ -8,6 +8,7 @@
 import { ratesPaths, ratesSchemas, ratesTag } from "./rates.docs";
 import { exchangePaths, exchangeSchemas, exchangeTag } from "./exchange.docs";
 import { summaryPaths, summarySchemas } from "./summary.docs";
+import { chatPaths, chatSchemas, chatTag } from "./chat.docs";
 import { aliasPaths, aliasRules, aliasSchemas, aliasTag } from "./alias.docs";
 import { transferPaths, transferSchemas, transferTag } from "./transfer.docs";
 
@@ -77,6 +78,7 @@ export const openApiSpec = {
     { name: "Billetera", description: "Billetera multimoneda y saldos del usuario autenticado" },
     ratesTag,
     exchangeTag,
+    chatTag,
     aliasTag,
     transferTag,
   ],
@@ -93,6 +95,7 @@ export const openApiSpec = {
       ...ratesSchemas,
       ...exchangeSchemas,
       ...summarySchemas,
+      ...chatSchemas,
       ...aliasSchemas,
       ...transferSchemas,
       User: {
@@ -279,6 +282,7 @@ export const openApiSpec = {
     ...ratesPaths,
     ...exchangePaths,
     ...summaryPaths,
+    ...chatPaths,
     ...aliasPaths,
     ...transferPaths,
     "/health": {
